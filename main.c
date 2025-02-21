@@ -315,16 +315,11 @@ void buildFromFile(const char* fileName, uint32_t memArray[]) {
 }
 
 void parseBigEndian(uint32_t instruction, int *opcode, int *r1, int *r2, int *r3, int *literal) {
-    *opcode = (0b1111100000000000000000000000000 & instruction) >> 27;
-    printf("OPCODE: %d\n", *opcode);
-    *r1 = (0b00000111110000000000000000000000 & instruction) >> 22;
-    printf("R1: %d\n", *r1);
-    *r2 = (0b00000000001111100000000000000000 & instruction) >> 17;
-    printf("R2: %d\n", *r2);
-    *r3 = (0b00000000000000011111000000000000 & instruction) >> 12; 
-    printf("R3: %d\n", *r3);
-    *literal = (0b00000000000000000000111111111111 & instruction); 
-    printf("LITERAL: %d\n", *literal);
+    *opcode = 0x1F & (instruction >> 27);
+    *r1 = 0x1F & (instruction >> 22);
+    *r2 = 0x1F & (instruction >> 17);
+    *r3 = 0x1F & (instruction >> 12); 
+    *literal = 0xFFF & instruction; 
     return;
 }
 
@@ -333,8 +328,11 @@ void parseFromStack(uint32_t memArray[]) {
     int reachedHalt = 0;
     uint64_t programCounter = 4096;
     while (!reachedHalt) {
-        int i = ((programCounter - 4096) / 4);
-        parseBigEndian(memArray[i], &opcode, &r1, &r2, &r3, &literal);
+        if (programCounter >= MEM_SIZE) {
+            fprintf(stderr, "Simulation error");
+            exit(-1);
+        }
+        parseBigEndian(&memArray[programCounter], &opcode, &r1, &r2, &r3, &literal);
         if (opcode == 15 && literal == 0) {
             reachedHalt = 1; 
             break;
