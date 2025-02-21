@@ -13,14 +13,16 @@ uint32_t memArray[MEM_SIZE]; // array of 32 bit integers to hold each instructio
 int memAddressCounter = 0; // counts total number of instructions for first pass through file
 int isUserMode = 1; // tracks user mode
 int isSupervisorMode = 0; // tracks supervisor mode
+int programCounter = 4096;
 
-int64_t extendLiteral(uint16_t literal) {
-    if (literal & 0x800) {
-        return (int64_t)(literal | 0xFFFFFFFFFFFFF000ULL);
+int16_t extendLiteral(uint16_t literal) {
+    if ((literal >> 11) & 1) {
+        literal = (literal | 0xF000);
     }
     else {
-        return (int64_t)literal;
+        literal = (int16_t) literal;
     }
+    return literal;
 }
 
 void and(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
@@ -82,7 +84,7 @@ void brr1(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 }
 
 void brr2(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
-    int64_t newLiteral = extendLiteral(literal);
+    int16_t newLiteral = extendLiteral(literal);
     *programCounter += newLiteral;
     return;
 }
@@ -166,12 +168,13 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 }
 
 void mov1(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
-    int64_t address = tinkerRegs[r2] + extendLiteral(literal);
-    if (address < 0 || address >= MEM_SIZE) { 
+    int16_t newLiteral = extendLiteral(literal);
+    int64_t address = tinkerRegs[r2] + newLiteral;
+    if (address < 0 || address + 2 >= MEM_SIZE) { 
         fprintf(stderr, "Simulation error");
         exit(-1);
     }
-    tinkerRegs[r1] = ((uint64_t)memArray[address/4 + 1] << 32) | memArray[address/4];
+    tinkerRegs[r1] = *(uint64_t *)(&memArray[address]); 
     *programCounter += 4;
     return;
 }
@@ -183,19 +186,19 @@ void mov2(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 }
 
 void mov3(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
-    tinkerRegs[r1] = (tinkerRegs[r1] & ~(0xFFFULL << 52)) | ((uint64_t)literal << 52);
+    tinkerRegs[r1] = (tinkerRegs[r1] & ~0xFFFULL) | literal;
     *programCounter += 4;
     return;
 }
 
 void mov4(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
-    int64_t address = tinkerRegs[r1] + extendLiteral(literal);
-    if (address < 0 || address >= MEM_SIZE) { 
+    int16_t newLiteral = extendLiteral(literal);
+    int64_t address = (int64_t)(tinkerRegs[r1] + newLiteral);
+    if (address < 0 || address + 2 >= MEM_SIZE) { 
         fprintf(stderr, "Simulation error");
         exit(-1);
     }
-    memArray[address/4] = (uint32_t)tinkerRegs[r2];
-    memArray[address/4 + 1] = (uint32_t)(tinkerRegs[r2] >> 32);
+    *(uint64_t *)(&memArray[address]) = tinkerRegs[r2];
     *programCounter += 4;
     return;
 }
@@ -205,7 +208,9 @@ void addf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
     result = in1 + in2;
-    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    uint64_t resultOut;
+    memcpy(&resultOut, &result, sizeof(double)); 
+    tinkerRegs[r1] = resultOut;
     *programCounter += 4;
     return;
 }
@@ -215,7 +220,9 @@ void subf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
     result = in1 - in2;
-    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    uint64_t resultOut;
+    memcpy(&resultOut, &result, sizeof(double)); 
+    tinkerRegs[r1] = resultOut;
     *programCounter += 4;
     return;
 }
@@ -225,7 +232,9 @@ void mulf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
     result = in1 * in2;
-    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    uint64_t resultOut;
+    memcpy(&resultOut, &result, sizeof(double)); 
+    tinkerRegs[r1] = resultOut;
     *programCounter += 4;
     return;
 }
@@ -239,7 +248,9 @@ void divf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
         exit(-1);
     }
     result = in1 / in2;
-    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    uint64_t resultOut;
+    memcpy(&resultOut, &result, sizeof(double)); 
+    tinkerRegs[r1] = resultOut;
     *programCounter += 4;
     return;
 }
@@ -275,6 +286,9 @@ void mul(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 }
 
 void tinkerDiv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    if (tinkerRegs[r3] == 0) {
+        fprintf(stderr, "Simulation error");
+    }
     tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] / tinkerRegs[r3]);
     *programCounter += 4;
     return;
@@ -323,17 +337,18 @@ void parseBigEndian(uint32_t instruction, int *opcode, int *r1, int *r2, int *r3
 void parseFromStack(uint32_t memArray[]) {
     int opcode, r1, r2, r3, literal;
     int reachedHalt = 0;
-    uint64_t programCounter = 4096;
+    uint32_t instruction;
     while (!reachedHalt) {
         if (programCounter >= MEM_SIZE) {
             fprintf(stderr, "Simulation error");
             exit(-1);
         }
-        parseBigEndian(&memArray[programCounter], &opcode, &r1, &r2, &r3, &literal);
-        if (opcode == 15 && literal == 0) {
-            reachedHalt = 1;
-            exit(0); 
-        }
+        instruction = &memArray[programCounter];
+        opcode = 0x1F & (instruction >> 27);
+        r1 = 0x1F & (instruction >> 22);
+        r2 = 0x1F & (instruction >> 17);
+        r3 = 0x1F & (instruction >> 12); 
+        literal = 0xFFF & instruction;  
         globalInstructionArray[opcode](r1, r2, r3, literal, &programCounter); 
     }
     return;
