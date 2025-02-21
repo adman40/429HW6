@@ -128,6 +128,9 @@ void brgt(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     char inputBuffer[64];
     uint64_t input;
+    if (literal == 0) {
+        exit(0);
+    }
     if (literal == 1) {
         isSupervisorMode = 1;
         isUserMode = 0;
@@ -297,12 +300,6 @@ void buildFromFile(const char* fileName, uint32_t memArray[]) {
                                 (fourByteBuffer[2] << 16) | 
                                 (fourByteBuffer[1] << 8) | 
                                 (fourByteBuffer[0]);
-        if (((bigEndianVal >> 27) == 15) && ((bigEndianVal << 27) == 0)) {
-            memArray[memAddressCounter] = bigEndianVal;
-            memAddressCounter++;
-            tinkerRegs[31] = MEM_SIZE - 1;
-            return;
-        }
         memArray[memAddressCounter] = bigEndianVal;
         memAddressCounter++;
         if (memAddressCounter >= MEM_SIZE) {
@@ -334,8 +331,8 @@ void parseFromStack(uint32_t memArray[]) {
         }
         parseBigEndian(&memArray[programCounter], &opcode, &r1, &r2, &r3, &literal);
         if (opcode == 15 && literal == 0) {
-            reachedHalt = 1; 
-            break;
+            reachedHalt = 1;
+            exit(0); 
         }
         globalInstructionArray[opcode](r1, r2, r3, literal, &programCounter); 
     }
