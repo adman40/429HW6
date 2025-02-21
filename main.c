@@ -152,9 +152,9 @@ void priv(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
         *programCounter += 4;
     }
     else if (literal == 4) {
-        if (tinkerRegs[r1] != 0) {
-            printf("%lu", tinkerRegs[r2]);
-        }
+        if (tinkerRegs[r1] == 1) {
+    printf("%lu", tinkerRegs[r2]);
+} 
         *programCounter += 4;
     }
     else {
