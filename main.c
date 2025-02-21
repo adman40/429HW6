@@ -5,9 +5,11 @@
 #include <stdint.h>
 
 #define MEM_SIZE (1024 * 512) // 256 4 byte chunks (instructions) per 1 kibibyte * 256 kibibytes
+                               // chunk 256 * 512 (top chunk) = program counter 4096
+                               // chunk 255 * 512 (one chunk down) = program counter 4100 and so on
 
 uint64_t tinkerRegs[32] = {0}; // array of signed 64-bit integers representing register values (should data type be int64?)
-uint8_t memArray[MEM_SIZE];
+uint8_t memArray[MEM_SIZE]; // array of 32 bit integers to hold each instruction index 0 = programCounter 4096, index n = (programCounter - 4096) / 4
 int isUserMode = 1; // tracks user mode
 int isSupervisorMode = 0; // tracks supervisor mode
 uint64_t programCounter = 4096;
@@ -16,71 +18,71 @@ int16_t extendLiteral(uint16_t literal) {
     return (int16_t)((literal & 0x0800) ? (literal | 0xF000) : literal);
 }
 
-void and(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void and(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] & tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void or(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void or(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] | tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void xor(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void xor(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] ^ tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void not(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void not(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = ~tinkerRegs[r2];
     *programCounter += 4;
     return;
 }
 
-void shftr(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void shftr(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] >> tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void shftri(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void shftri(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r1] >> literal;
     *programCounter += 4;
     return;
 }
 
-void shftl(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void shftl(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] << tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void shftli(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void shftli(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r1] << literal;
     *programCounter += 4;
     return;
 }
 
-void br(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void br(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     *programCounter = tinkerRegs[r1];
     return;
 }
 
-void brr1(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void brr1(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
    *programCounter += tinkerRegs[r1];
     return;
 }
 
-void brr2(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void brr2(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     int16_t newLiteral = extendLiteral(literal);
     *programCounter += newLiteral;
     return;
 }
 
-void brnz(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void brnz(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     if (tinkerRegs[r2] != 0) {
         *programCounter = tinkerRegs[r1];
     }
@@ -90,7 +92,7 @@ void brnz(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void call(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter){
+void call(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter){
     if (tinkerRegs[31] - 8 < 4096) {
         fprintf(stderr, "Simulation error");
         exit(-1);
@@ -100,15 +102,16 @@ void call(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter){
     return;
 }
 
-void tinkerReturn(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter){
+void tinkerReturn(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter){
     if (tinkerRegs[31] - 8 < 4096) {
         fprintf(stderr, "Simulation error");
         exit(-1);
     }
     *programCounter = *(uint64_t *)(&memArray[tinkerRegs[31] - 8]);
+    return;
 }
 
-void brgt(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void brgt(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     if (tinkerRegs[r2] <= tinkerRegs[r3]) {
         *programCounter += 4;
     }
@@ -118,7 +121,7 @@ void brgt(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void priv(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void priv(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     char inputBuffer[64];
     uint64_t input;
     if (literal == 0) {
@@ -161,7 +164,7 @@ void priv(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void mov1(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mov1(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     int16_t newLiteral = extendLiteral(literal);
     int64_t address = tinkerRegs[r2] + newLiteral;
     if (address < 0 || address + 8 >= MEM_SIZE) { 
@@ -173,19 +176,19 @@ void mov1(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void mov2(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mov2(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2]; 
     *programCounter += 4;
     return;
 }
 
-void mov3(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mov3(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = (tinkerRegs[r1] & ~0xFFFULL) | literal;
     *programCounter += 4;
     return;
 }
 
-void mov4(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mov4(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     int16_t newLiteral = extendLiteral(literal);
     int64_t address = (int64_t)(tinkerRegs[r1] + newLiteral);
     if (address < 0 || address + 8 >= MEM_SIZE) { 
@@ -197,7 +200,7 @@ void mov4(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void addf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void addf(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     double in1, in2, result;
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
@@ -209,7 +212,7 @@ void addf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void subf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void subf(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     double in1, in2, result;
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
@@ -221,7 +224,7 @@ void subf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void mulf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mulf(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     double in1, in2, result;
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
@@ -233,7 +236,7 @@ void mulf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void divf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void divf(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     double in1, in2, result;
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
@@ -249,37 +252,37 @@ void divf(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
     return;
 }
 
-void add(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void add(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] + tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void addi(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void addi(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] += literal;
     *programCounter += 4;
     return;
 }
 
-void sub(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void sub(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = tinkerRegs[r2] - tinkerRegs[r3];
     *programCounter += 4;
     return;
 }
 
-void subi(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void subi(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] -= literal;
     *programCounter += 4;
     return;
 }
 
-void mul(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void mul(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] * tinkerRegs[r3]);
     *programCounter += 4;
     return;
 }
 
-void tinkerDiv(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter) {
+void tinkerDiv(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     if (tinkerRegs[r3] == 0) {
         fprintf(stderr, "Simulation error");
         exit(-1);
@@ -289,7 +292,7 @@ void tinkerDiv(int r1, int r2, int r3, int16_t literal, uint64_t *programCounter
     return;
 }
 
-typedef void (*Instruction)(int r1, int r2, int r3, int16_t literal, uint64_t *);
+typedef void (*Instruction)(int r1, int r2, int r3, uint16_t literal, uint64_t *);
 Instruction globalInstructionArray[30] = {and, or, xor, not, shftr, shftri, 
                                         shftl, shftli, br, brr1, brr2, brnz, 
                                         call, tinkerReturn, brgt, priv, mov1, mov2, 
@@ -327,7 +330,7 @@ void buildFromFile(const char* fileName, uint8_t memArray[]) {
 
 void parseFromStack(uint8_t memArray[]) {
     int opcode, r1, r2, r3; 
-    int16_t literal;
+    uint16_t literal;
     int reachedHalt = 0;
     uint32_t instruction;
     while (!reachedHalt) {
