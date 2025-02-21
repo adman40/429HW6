@@ -167,7 +167,7 @@ void priv(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
 void mov1(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     int16_t newLiteral = extendLiteral(literal);
     int64_t address = tinkerRegs[r2] + newLiteral;
-    if (address < 0 || address + 8 >= MEM_SIZE) { 
+    if (address < 0 || address + 8 > MEM_SIZE) { 
         fprintf(stderr, "Simulation error");
         exit(-1);
     }
@@ -191,7 +191,7 @@ void mov3(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
 void mov4(int r1, int r2, int r3, uint16_t literal, uint64_t *programCounter) {
     int16_t newLiteral = extendLiteral(literal);
     int64_t address = (int64_t)(tinkerRegs[r1] + newLiteral);
-    if (address < 0 || address + 8 >= MEM_SIZE) { 
+    if (address < 0 || address + 8 > MEM_SIZE) { 
         fprintf(stderr, "Simulation error");
         exit(-1);
     }
@@ -334,7 +334,7 @@ void parseFromStack(uint8_t memArray[]) {
     int reachedHalt = 0;
     uint32_t instruction;
     while (!reachedHalt) {
-        if (programCounter >= MEM_SIZE) {
+        if (programCounter> MEM_SIZE) {
             fprintf(stderr, "Simulation error");
             exit(-1);
         }
