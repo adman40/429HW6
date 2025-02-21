@@ -10,7 +10,6 @@
 
 uint64_t tinkerRegs[32] = {0}; // array of signed 64-bit integers representing register values (should data type be int64?)
 uint8_t memArray[MEM_SIZE]; // array of 32 bit integers to hold each instruction index 0 = programCounter 4096, index n = (programCounter - 4096) / 4
-int memAddressCounter = 0; // counts total number of instructions for first pass through file
 int isUserMode = 1; // tracks user mode
 int isSupervisorMode = 0; // tracks supervisor mode
 uint64_t programCounter = 4096;
@@ -369,10 +368,6 @@ int main(int argc, char *argv[]) {
     }
     memset(memArray, 0, sizeof(memArray));
     buildFromFile(argv[1], memArray);
-    if (memAddressCounter == 0) {
-        fprintf(stderr, "Simulation error");
-        return EXIT_FAILURE;
-    }
     parseFromStack(memArray);
     return EXIT_SUCCESS;
 } 
