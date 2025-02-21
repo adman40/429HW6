@@ -8,20 +8,14 @@
                                // chunk 256 * 512 (top chunk) = program counter 4096
                                // chunk 255 * 512 (one chunk down) = program counter 4100 and so on
 
-uint64_t tinkerRegs[32] = {0}; // array of signed 64-bit integers representing register values (should data type be int64?)
+uint64_t tinkerRegs[32]; // array of signed 64-bit integers representing register values (should data type be int64?)
 uint8_t memArray[MEM_SIZE]; // array of 32 bit integers to hold each instruction index 0 = programCounter 4096, index n = (programCounter - 4096) / 4
 int isUserMode = 1; // tracks user mode
 int isSupervisorMode = 0; // tracks supervisor mode
 uint64_t programCounter = 4096;
 
 int16_t extendLiteral(uint16_t literal) {
-    if ((literal >> 11) & 1) {
-        literal = (literal | 0xF000);
-    }
-    else {
-        literal = (int16_t) literal;
-    }
-    return literal;
+    return (int16_t)((literal & 0x0800) ? (literal | 0xF000) : literal);
 }
 
 void and(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
