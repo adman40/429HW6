@@ -149,7 +149,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
                 fprintf(stderr, "Simulation error");
                 exit(-1);
             } 
-            if (sscanf(inputBuffer, "%llu", &input) != 1) {
+            if (sscanf(inputBuffer, "%lu", &input) != 1) {
                 fprintf(stderr, "Simulation error");
                 exit(-1);
             }
@@ -159,7 +159,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     }
     else if (literal == 4) {
         if (tinkerRegs[r1] != 0) {
-            printf("%llu", tinkerRegs[r2]);
+            printf("%lu", tinkerRegs[r2]);
         }
         *programCounter += 4;
     }
