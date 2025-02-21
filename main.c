@@ -290,6 +290,7 @@ void mul(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 void tinkerDiv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     if (tinkerRegs[r3] == 0) {
         fprintf(stderr, "Simulation error");
+        exit(-1);
     }
     tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] / tinkerRegs[r3]);
     *programCounter += 4;
