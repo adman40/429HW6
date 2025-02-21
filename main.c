@@ -311,7 +311,7 @@ void buildFromFile(const char* fileName, uint8_t memArray[]) {
             fprintf(stderr, "Invalid tinker filepath\n");
             exit(-1);
     }
-    memset(memArray, 0, 512 * 256);
+    memset(memArray, 0, 512 * 1024);
     fseek(file, 0, SEEK_END);
     long size = ftell(file);
     fseek(file, 0, SEEK_SET);
