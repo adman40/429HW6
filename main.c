@@ -145,7 +145,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
                 fprintf(stderr, "ERROR READING FROM INPUT");
                 exit(-1);
             } 
-            if (sscanf(inputBuffer, "%lu", &input) != 1) {
+            if (sscanf(inputBuffer, "%llu", &input) != 1) {
                 fprintf(stderr, "Invalid Input");
                 exit(-1);
             }
@@ -154,7 +154,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     }
     else if (literal == 4) {
         if (tinkerRegs[r1] != 0) {
-            printf("%lu", tinkerRegs[r2]);
+            printf("%llu", tinkerRegs[r2]);
         }
     }
     else {
@@ -274,7 +274,7 @@ void mul(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     return;
 }
 
-void div(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+void tinkerDiv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] / tinkerRegs[r3]);
     *programCounter += 4;
     return;
@@ -285,7 +285,7 @@ Instruction globalInstructionArray[30] = {and, or, xor, not, shftr, shftri,
                                         shftl, shftli, br, brr1, brr2, brnz, 
                                         call, tinkerReturn, brgt, priv, mov1, mov2, 
                                         mov3, mov4, addf, subf, mulf, divf, add,
-                                        addi, sub, subi, mul, div}; // array of function pointers to be called when parsing
+                                        addi, sub, subi, mul, tinkerDiv}; // array of function pointers to be called when parsing
 
 // builds initial memory array from file
 void buildFromFile(const char* fileName, uint32_t memArray[]) {
@@ -342,7 +342,7 @@ void parseFromStack(uint32_t memArray[]) {
             reachedHalt = 1; 
             break;
         }
-        globalInstructionArray[opcode](r1, r2, r3, literal, (uint64_t)&programCounter); 
+        globalInstructionArray[opcode](r1, r2, r3, literal, &programCounter); 
     }
     return;
 }
