@@ -99,23 +99,20 @@ void brnz(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 
 void call(int r1, int r2, int r3, int literal, uint64_t *programCounter){
     if (tinkerRegs[31] - 2 < 4096) {
-        fprintf(stderr, "Stack Overflow Error");
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
-    memArray[(tinkerRegs[31] - 2) / 2] = (uint32_t)(*programCounter + 4);
-    memArray[(tinkerRegs[31] - 2) / 2 + 1] = (uint32_t)((*programCounter + 4) >> 32);
-    tinkerRegs[31] -= 2;
+    *(uint64_t *)(&memArray[tinkerRegs[31] - 2]) = *programCounter + 4;
     *programCounter = tinkerRegs[r1];
     return;
 }
 
 void tinkerReturn(int r1, int r2, int r3, int literal, uint64_t *programCounter){
-    if (tinkerRegs[31] + 2 >= MEM_SIZE) {
-        fprintf(stderr, "Stack Underflow");
+    if (tinkerRegs[31] - 2 < 4096) {
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
-    *programCounter = ((uint64_t)memArray[tinkerRegs[31] / 2 + 1] << 32) | memArray[tinkerRegs[31] / 2];
-    tinkerRegs[31] += 2;
+    *programCounter = *(uint64_t *)(&memArray[tinkerRegs[31] - 2]);
 }
 
 void brgt(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
@@ -142,11 +139,11 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     else if (literal == 3) {
         if (tinkerRegs[r2] == 0) {
             if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL) {
-                fprintf(stderr, "ERROR READING FROM INPUT");
+                fprintf(stderr, "Simulation error");
                 exit(-1);
             } 
             if (sscanf(inputBuffer, "%llu", &input) != 1) {
-                fprintf(stderr, "Invalid Input");
+                fprintf(stderr, "Simulation error");
                 exit(-1);
             }
             tinkerRegs[r1] = input;
@@ -158,7 +155,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
         }
     }
     else {
-        printf("Illegal Literal Passed With Priv Opcode");
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
     *programCounter += 4;
@@ -168,7 +165,7 @@ void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 void mov1(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     int64_t address = tinkerRegs[r2] + extendLiteral(literal);
     if (address < 0 || address >= MEM_SIZE) { 
-        fprintf(stderr, "MEM ACCESS ERROR IN MOV");
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
     tinkerRegs[r1] = ((uint64_t)memArray[address/4 + 1] << 32) | memArray[address/4];
@@ -191,7 +188,7 @@ void mov3(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
 void mov4(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     int64_t address = tinkerRegs[r1] + extendLiteral(literal);
     if (address < 0 || address >= MEM_SIZE) { 
-        fprintf(stderr, "MEM ACCESS ERROR IN MOV");
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
     memArray[address/4] = (uint32_t)tinkerRegs[r2];
@@ -235,7 +232,7 @@ void divf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
     memcpy(&in1, &tinkerRegs[r2], sizeof(double));
     memcpy(&in2, &tinkerRegs[r3], sizeof(double));
     if (in2 == 0.0) {
-        fprintf(stderr, "DIV BY ZERO");
+        fprintf(stderr, "Simulation error");
         exit(-1);
     }
     result = in1 / in2;
@@ -303,13 +300,13 @@ void buildFromFile(const char* fileName, uint32_t memArray[]) {
         if (((bigEndianVal >> 27) == 15) && ((bigEndianVal << 27) == 0)) {
             memArray[memAddressCounter] = bigEndianVal;
             memAddressCounter++;
-            tinkerRegs[31] = (int64_t)(MEM_SIZE - 1);
+            tinkerRegs[31] = MEM_SIZE - 1;
             return;
         }
         memArray[memAddressCounter] = bigEndianVal;
         memAddressCounter++;
         if (memAddressCounter >= MEM_SIZE) {
-            fprintf(stderr, "ERROR: BINARY FILE TOO LARGE");
+            fprintf(stderr, "Simulation error");
             return;
         } 
     }
@@ -349,15 +346,15 @@ void parseFromStack(uint32_t memArray[]) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <binary_file.tko>\n", argv[0]);
+        fprintf(stderr, "Invalid tinker filepath");
         return EXIT_FAILURE;
     }
     memset(memArray, 0, sizeof(memArray));
     buildFromFile(argv[1], memArray);
     if (memAddressCounter == 0) {
-        fprintf(stderr, "FILE CONTAINS NO VALID INSTRUCTIONS");
+        fprintf(stderr, "Simulation error");
         return EXIT_FAILURE;
     }
     parseFromStack(memArray);
     return EXIT_SUCCESS;
-}
+} 
