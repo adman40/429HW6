@@ -1,0 +1,363 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdint.h>
+
+#define MEM_SIZE (256 * 512) // 256 4 byte chunks (instructions) per 1 kibibyte * 256 kibibytes
+                               // chunk 256 * 512 (top chunk) = program counter 4096
+                               // chunk 255 * 512 (one chunk down) = program counter 4100 and so on
+
+uint64_t tinkerRegs[32] = {0}; // array of signed 64-bit integers representing register values (should data type be int64?)
+uint32_t memArray[MEM_SIZE]; // array of 32 bit integers to hold each instruction index 0 = programCounter 4096, index n = (programCounter - 4096) / 4
+int memAddressCounter = 0; // counts total number of instructions for first pass through file
+int isUserMode = 1; // tracks user mode
+int isSupervisorMode = 0; // tracks supervisor mode
+
+int64_t extendLiteral(uint16_t literal) {
+    if (literal & 0x800) {
+        return (int64_t)(literal | 0xFFFFFFFFFFFFF000ULL);
+    }
+    else {
+        return (int64_t)literal;
+    }
+}
+
+void and(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] & tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void or(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] | tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void xor(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] ^ tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void not(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = ~tinkerRegs[r2];
+    *programCounter += 4;
+    return;
+}
+
+void shftr(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] >> tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void shftri(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r1] >> literal;
+    *programCounter += 4;
+    return;
+}
+
+void shftl(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] << tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void shftli(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r1] << literal;
+    *programCounter += 4;
+    return;
+}
+
+void br(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    *programCounter = tinkerRegs[r1];
+    return;
+}
+
+void brr1(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+   *programCounter += tinkerRegs[r1];
+    return;
+}
+
+void brr2(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    int64_t newLiteral = extendLiteral(literal);
+    *programCounter += newLiteral;
+    return;
+}
+
+void brnz(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    if (tinkerRegs[r2] != 0) {
+        *programCounter = tinkerRegs[r1];
+    }
+    else {
+        *programCounter += 4;
+    }
+    return;
+}
+
+void call(int r1, int r2, int r3, int literal, uint64_t *programCounter){
+    if (tinkerRegs[31] - 2 < 4096) {
+        fprintf(stderr, "Stack Overflow Error");
+        exit(-1);
+    }
+    memArray[(tinkerRegs[31] - 2) / 2] = (uint32_t)(*programCounter + 4);
+    memArray[(tinkerRegs[31] - 2) / 2 + 1] = (uint32_t)((*programCounter + 4) >> 32);
+    tinkerRegs[31] -= 2;
+    *programCounter = tinkerRegs[r1];
+    return;
+}
+
+void tinkerReturn(int r1, int r2, int r3, int literal, uint64_t *programCounter){
+    if (tinkerRegs[31] + 2 >= MEM_SIZE) {
+        fprintf(stderr, "Stack Underflow");
+        exit(-1);
+    }
+    *programCounter = ((uint64_t)memArray[tinkerRegs[31] / 2 + 1] << 32) | memArray[tinkerRegs[31] / 2];
+    tinkerRegs[31] += 2;
+}
+
+void brgt(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    if (tinkerRegs[r2] <= tinkerRegs[r3]) {
+        *programCounter += 4;
+    }
+    else {
+        *programCounter = tinkerRegs[r1];
+    }
+    return;
+}
+
+void priv(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    char inputBuffer[64];
+    uint64_t input;
+    if (literal == 1) {
+        isSupervisorMode = 1;
+        isUserMode = 0;
+    }
+    else if (literal == 2) {
+        isUserMode = 1;
+        isSupervisorMode = 0;
+    }
+    else if (literal == 3) {
+        if (tinkerRegs[r2] == 0) {
+            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL) {
+                fprintf(stderr, "ERROR READING FROM INPUT");
+                exit(-1);
+            } 
+            if (sscanf(inputBuffer, "%lu", &input) != 1) {
+                fprintf(stderr, "Invalid Input");
+                exit(-1);
+            }
+            tinkerRegs[r1] = input;
+        }
+    }
+    else if (literal == 4) {
+        if (tinkerRegs[r1] != 0) {
+            printf("%lu", tinkerRegs[r2]);
+        }
+    }
+    else {
+        printf("Illegal Literal Passed With Priv Opcode");
+        exit(-1);
+    }
+    *programCounter += 4;
+    return;
+}
+
+void mov1(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    int64_t address = tinkerRegs[r2] + extendLiteral(literal);
+    if (address < 0 || address >= MEM_SIZE) { 
+        fprintf(stderr, "MEM ACCESS ERROR IN MOV");
+        exit(-1);
+    }
+    tinkerRegs[r1] = ((uint64_t)memArray[address/4 + 1] << 32) | memArray[address/4];
+    *programCounter += 4;
+    return;
+}
+
+void mov2(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2]; 
+    *programCounter += 4;
+    return;
+}
+
+void mov3(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = (tinkerRegs[r1] & ~(0xFFFULL << 52)) | ((uint64_t)literal << 52);
+    *programCounter += 4;
+    return;
+}
+
+void mov4(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    int64_t address = tinkerRegs[r1] + extendLiteral(literal);
+    if (address < 0 || address >= MEM_SIZE) { 
+        fprintf(stderr, "MEM ACCESS ERROR IN MOV");
+        exit(-1);
+    }
+    memArray[address/4] = (uint32_t)tinkerRegs[r2];
+    memArray[address/4 + 1] = (uint32_t)(tinkerRegs[r2] >> 32);
+    *programCounter += 4;
+    return;
+}
+
+void addf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    double in1, in2, result;
+    memcpy(&in1, &tinkerRegs[r2], sizeof(double));
+    memcpy(&in2, &tinkerRegs[r3], sizeof(double));
+    result = in1 + in2;
+    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    *programCounter += 4;
+    return;
+}
+
+void subf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    double in1, in2, result;
+    memcpy(&in1, &tinkerRegs[r2], sizeof(double));
+    memcpy(&in2, &tinkerRegs[r3], sizeof(double));
+    result = in1 - in2;
+    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    *programCounter += 4;
+    return;
+}
+
+void mulf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    double in1, in2, result;
+    memcpy(&in1, &tinkerRegs[r2], sizeof(double));
+    memcpy(&in2, &tinkerRegs[r3], sizeof(double));
+    result = in1 * in2;
+    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    *programCounter += 4;
+    return;
+}
+
+void divf(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    double in1, in2, result;
+    memcpy(&in1, &tinkerRegs[r2], sizeof(double));
+    memcpy(&in2, &tinkerRegs[r3], sizeof(double));
+    if (in2 == 0.0) {
+        fprintf(stderr, "DIV BY ZERO");
+        exit(-1);
+    }
+    result = in1 / in2;
+    memcpy(&tinkerRegs[r1], &result, sizeof(double)); 
+    *programCounter += 4;
+    return;
+}
+
+void add(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] + tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void addi(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] += literal;
+    *programCounter += 4;
+    return;
+}
+
+void sub(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = tinkerRegs[r2] - tinkerRegs[r3];
+    *programCounter += 4;
+    return;
+}
+
+void subi(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] -= literal;
+    *programCounter += 4;
+    return;
+}
+
+void mul(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] * tinkerRegs[r3]);
+    *programCounter += 4;
+    return;
+}
+
+void div(int r1, int r2, int r3, int literal, uint64_t *programCounter) {
+    tinkerRegs[r1] = (int64_t)(tinkerRegs[r2] / tinkerRegs[r3]);
+    *programCounter += 4;
+    return;
+}
+
+typedef void (*Instruction)(int r1, int r2, int r3, int literal, uint64_t *);
+Instruction globalInstructionArray[30] = {and, or, xor, not, shftr, shftri, 
+                                        shftl, shftli, br, brr1, brr2, brnz, 
+                                        call, tinkerReturn, brgt, priv, mov1, mov2, 
+                                        mov3, mov4, addf, subf, mulf, divf, add,
+                                        addi, sub, subi, mul, div}; // array of function pointers to be called when parsing
+
+// builds initial memory array from file
+void buildFromFile(const char* fileName, uint32_t memArray[]) {
+    FILE *file = fopen(fileName, "rb");
+    if (file == NULL) {
+            fprintf(stderr, "Error Opening Binary File");
+            return;
+    }
+    unsigned char fourByteBuffer[4] = {0};
+    while (fread(fourByteBuffer, 1, 4, file)) {
+        uint32_t bigEndianVal = (fourByteBuffer[3] << 24) |
+                                (fourByteBuffer[2] << 16) | 
+                                (fourByteBuffer[1] << 8) | 
+                                (fourByteBuffer[0]);
+        if (((bigEndianVal >> 27) == 15) && ((bigEndianVal << 27) == 0)) {
+            memArray[memAddressCounter] = bigEndianVal;
+            memAddressCounter++;
+            tinkerRegs[31] = (int64_t)(MEM_SIZE - 1);
+            return;
+        }
+        memArray[memAddressCounter] = bigEndianVal;
+        memAddressCounter++;
+        if (memAddressCounter >= MEM_SIZE) {
+            fprintf(stderr, "ERROR: BINARY FILE TOO LARGE");
+            return;
+        } 
+    }
+    tinkerRegs[31] = (int64_t)(MEM_SIZE - 1); // initialize stack pointer to last (top) index
+    fclose(file);
+}
+
+void parseBigEndian(uint32_t instruction, int *opcode, int *r1, int *r2, int *r3, int *literal) {
+    *opcode = (0b1111100000000000000000000000000 & instruction) >> 27;
+    printf("OPCODE: %d\n", *opcode);
+    *r1 = (0b00000111110000000000000000000000 & instruction) >> 22;
+    printf("R1: %d\n", *r1);
+    *r2 = (0b00000000001111100000000000000000 & instruction) >> 17;
+    printf("R2: %d\n", *r2);
+    *r3 = (0b00000000000000011111000000000000 & instruction) >> 12; 
+    printf("R3: %d\n", *r3);
+    *literal = (0b00000000000000000000111111111111 & instruction); 
+    printf("LITERAL: %d\n", *literal);
+    return;
+}
+
+void parseFromStack(uint32_t memArray[]) {
+    int opcode, r1, r2, r3, literal;
+    int reachedHalt = 0;
+    uint64_t programCounter = 4096;
+    while (!reachedHalt) {
+        int i = ((programCounter - 4096) / 4);
+        parseBigEndian(memArray[i], &opcode, &r1, &r2, &r3, &literal);
+        if (opcode == 15 && literal == 0) {
+            reachedHalt = 1; 
+            break;
+        }
+        globalInstructionArray[opcode](r1, r2, r3, literal, (uint64_t)&programCounter); 
+    }
+    return;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <binary_file.tko>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    memset(memArray, 0, sizeof(memArray));
+    buildFromFile(argv[1], memArray);
+    if (memAddressCounter == 0) {
+        fprintf(stderr, "FILE CONTAINS NO VALID INSTRUCTIONS");
+        return EXIT_FAILURE;
+    }
+    parseFromStack(memArray);
+    return EXIT_SUCCESS;
+}
